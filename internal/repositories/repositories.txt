@@ -39,3 +39,14 @@ Position:
     - FindOpenPositionsBySymbol
     - GetPositionsByTimeRange
     - GetTotalPnL
+
+Position:
+    - NewPriceRepository
+    - Create
+    - FindByID
+    - Update
+    - Delete
+    - FindAll
+    - FindBySymbol
+    - GetTransactionsByTimeRange
+    - GetTotalVolume
