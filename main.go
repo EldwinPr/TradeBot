@@ -35,14 +35,19 @@ func main() {
 
 	err = db.AutoMigrate(
 		&models.Price{},
+		&models.Position{},
+		&models.Balance{},
+		&models.Transaction{},
 	)
+
 	if err != nil {
 		log.Fatal("Failed to migrate database:", err)
 	}
 
 	db.Logger = db.Logger.LogMode(logger.Error)
+	symbols := []string{"ONDOSDT", "LINKUSDT", "DOTUSDT", "RENDERUSDT", "POLUSDT", "AAVEUSDT", "NEARUSDT", "FLOKIUSDT", "FETUSDT", "JUPUSDT"}
 
-	handlers.PriceHandler(db)
+	handlers.PriceHandler(db, symbols)
 
 	// Keep running until interrupt
 	c := make(chan os.Signal, 1)

@@ -11,7 +11,7 @@ import (
 	"gorm.io/gorm"
 )
 
-func PriceHandler(db *gorm.DB) {
+func PriceHandler(db *gorm.DB, symbols []string) {
 	priceRepo := repositories.NewPriceRepository(db)
 
 	// Clear price table before starting
@@ -21,7 +21,6 @@ func PriceHandler(db *gorm.DB) {
 	}
 
 	futuresClient := futures.NewClient(os.Getenv("BINANCE_API_KEY"), os.Getenv("BINANCE_SECRET_KEY"))
-	symbols := []string{"BTCUSDT", "ETHUSDT", "SOLUSDT"}
 
 	ctx := context.Background()
 
@@ -29,8 +28,8 @@ func PriceHandler(db *gorm.DB) {
 	priceFetcher := priceOperations.NewPriceFetcher(futuresClient, symbols)
 
 	// fetch historical prices for different timeframes
-	timeframes := [5]string{"5m", "15m", "1h", "4h", "1d"}
-	days := [5]int{1, 2, 3, 5, 7}
+	timeframes := [4]string{"5m", "15m", "1h", "4h"}
+	days := [4]int{1, 2, 3, 4}
 	for i := 0; i < 5; i++ {
 		i := i // Create local copy for goroutine
 		go func() {
