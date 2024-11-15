@@ -1,0 +1,28 @@
+trading-bot/
+├── config/            
+│   └── not yet
+│
+├── internal/          
+│   ├── models/        # Database models
+│   │   ├── balance.go
+│   │   ├── position.go
+│   │   ├── price.go
+│   │   ├── trade.go
+│   │   └── transaction.go
+│   │
+│   ├── repository/    # Database operations
+│   │   └── not yet
+│   │
+│   ├── services/      # Business logic
+│   │   └──  not yet
+│   │
+│   └── operations/         # Trading logic
+│       ├── not yet
+│
+├── pkg/               # Reusable packages
+│   └── not yet
+│
+├── .env               # Configuration values
+├── .gitignore
+├── go.mod
+└── main.go

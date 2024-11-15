@@ -1,0 +1,39 @@
+function list
+
+balance:
+    - NewPriceRepository
+    - Create
+    - FindByID
+    - Update
+    - Delete
+    - FindAll
+    - FindBySymbol
+    - FindByUserID
+    - UpdateAmount
+
+price:
+    - NewPriceRepository
+    - Create
+    - FindByID
+    - Update
+    - Delete
+    - FindAll
+    - GetLatestPrice
+    - GetPriceHistory
+    - GetPriceRange
+    - GetOHLCV
+    - GetAveragePrice
+    - GetMultiSymbolPrices
+
+Position:
+    - NewPriceRepository
+    - Create
+    - FindByID
+    - Update
+    - Delete
+    - FindAll
+    - FindOpenPositions
+    - FindPositionsBySymbol
+    - FindOpenPositionsBySymbol
+    - GetPositionsByTimeRange
+    - GetTotalPnL
