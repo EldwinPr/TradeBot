@@ -4,14 +4,16 @@ trading-bot/
 │
 ├── internal/          
 │   ├── models/        # Database models
-│   │   ├── balance.go
-│   │   ├── position.go
-│   │   ├── price.go
-│   │   ├── trade.go
-│   │   └── transaction.go
+│   │   ├── balanceModel.go
+│   │   ├── positionModel.go
+│   │   ├── priceModel.go
+│   │   └── transactionModel.go
 │   │
 │   ├── repository/    # Database operations
-│   │   └── not yet
+│   │   ├── balanceRepository.go
+│   │   ├── positionRepository.go
+│   │   ├── priceRepository.go
+│   │   └── transactionRepository.go
 │   │
 │   ├── services/      # Business logic
 │   │   └──  not yet

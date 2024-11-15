@@ -28,7 +28,7 @@ func (r *PositionRepository) Create(position *models.Position) error {
 // FindByID retrieves a Position record by its ID
 func (r *PositionRepository) FindByID(id uint) (*models.Position, error) {
 	if id == 0 {
-		return nil, errors.New("invalid ID")
+		return nil, errors.New("invalid id")
 	}
 	var position models.Position
 	err := r.db.First(&position, id).Error
@@ -69,13 +69,6 @@ func (r *PositionRepository) FindOpenPositions() ([]models.Position, error) {
 }
 
 // FindClosedPositions retrieves all closed Position records
-func (r *PositionRepository) FindClosedPositions() ([]models.Position, error) {
-	var positions []models.Position
-	err := r.db.Where("status = ?", models.PositionStatusClosed).Find(&positions).Error
-	return positions, err
-}
-
-// FindPositionsBySymbol retrieves all Position records for a specific symbol
 func (r *PositionRepository) FindPositionsBySymbol(symbol string) ([]models.Position, error) {
 	if symbol == "" {
 		return nil, errors.New("invalid symbol")
@@ -85,27 +78,29 @@ func (r *PositionRepository) FindPositionsBySymbol(symbol string) ([]models.Posi
 	return positions, err
 }
 
-// GetPositionWithTrades retrieves position with associated trades
-func (r *PositionRepository) GetPositionWithTrades(id uint) (*models.Position, error) {
-	var position models.Position
-	err := r.db.Preload("Trades").First(&position, id).Error
-	if err == gorm.ErrRecordNotFound {
-		return nil, nil
-	}
-	return &position, err
-}
-
-// FindOpenPositionsBySymbol gets open positions for a symbol
+// FindOpenPositionsBySymbol retrieves all open Position records for a specific symbol
 func (r *PositionRepository) FindOpenPositionsBySymbol(symbol string) ([]models.Position, error) {
+	if symbol == "" {
+		return nil, errors.New("invalid symbol")
+	}
 	var positions []models.Position
-	err := r.db.Where("symbol = ? AND status = ?",
-		symbol, models.PositionStatusOpen).Find(&positions).Error
+	err := r.db.Where("symbol = ? AND status = ?", symbol, models.PositionStatusOpen).Find(&positions).Error
 	return positions, err
 }
 
-// GetPositionsByTimeRange gets positions within time range
+// FindClosedPositions retrieves all closed Position records
 func (r *PositionRepository) GetPositionsByTimeRange(start, end time.Time) ([]models.Position, error) {
 	var positions []models.Position
-	err := r.db.Where("created_at BETWEEN ? AND ?", start, end).Find(&positions).Error
+	err := r.db.Where("open_time BETWEEN ? AND ?", start, end).Find(&positions).Error
 	return positions, err
+}
+
+// GetTotalPnL calculates the total profit and loss for all closed positions within a time range
+func (r *PositionRepository) GetTotalPnL(start, end time.Time) (float64, error) {
+	var totalPnL float64
+	err := r.db.Model(&models.Position{}).
+		Where("close_time BETWEEN ? AND ? AND status = ?", start, end, models.PositionStatusClosed).
+		Select("SUM(pnl) as total_pnl").
+		Scan(&totalPnL).Error
+	return totalPnL, err
 }
