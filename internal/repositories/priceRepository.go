@@ -145,3 +145,31 @@ func (r *PriceRepository) GetMultiSymbolPrices(symbols []string) (map[string]*mo
 	}
 	return result, nil
 }
+
+// GetPricesByTimeFrame gets price data for a specific symbol and timeframe
+func (r *PriceRepository) GetPricesByTimeFrame(symbol, timeFrame string, start, end time.Time) ([]models.Price, error) {
+	if symbol == "" || timeFrame == "" {
+		return nil, errors.New("invalid symbol or timeframe")
+	}
+	var prices []models.Price
+	err := r.db.Where("symbol = ? AND time_frame = ? AND timestamp BETWEEN ? AND ?",
+		symbol, timeFrame, start, end).
+		Order("timestamp ASC").
+		Find(&prices).Error
+	return prices, err
+}
+
+// GetLatestPriceByTimeFrame gets the most recent price for a symbol and timeframe
+func (r *PriceRepository) GetLatestPriceByTimeFrame(symbol, timeFrame string) (*models.Price, error) {
+	if symbol == "" || timeFrame == "" {
+		return nil, errors.New("invalid symbol or timeframe")
+	}
+	var price models.Price
+	err := r.db.Where("symbol = ? AND time_frame = ?", symbol, timeFrame).
+		Order("timestamp DESC").
+		First(&price).Error
+	if err == gorm.ErrRecordNotFound {
+		return nil, nil
+	}
+	return &price, err
+}

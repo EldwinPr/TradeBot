@@ -24,6 +24,8 @@ price:
     - GetOHLCV
     - GetAveragePrice
     - GetMultiSymbolPrices
+    - GetPricesByTimeFrame
+    - GetLatestPriceByTimeFrame
 
 Position:
     - NewPriceRepository
