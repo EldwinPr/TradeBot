@@ -13,6 +13,7 @@ import (
 	"github.com/joho/godotenv"
 	"gorm.io/driver/postgres"
 	"gorm.io/gorm"
+	"gorm.io/gorm/logger"
 )
 
 func main() {
@@ -32,10 +33,14 @@ func main() {
 		log.Fatal("Failed to connect to database:", err)
 	}
 
-	err = db.AutoMigrate(&models.Price{})
+	err = db.AutoMigrate(
+		&models.Price{},
+	)
 	if err != nil {
 		log.Fatal("Failed to migrate database:", err)
 	}
+
+	db.Logger = db.Logger.LogMode(logger.Error)
 
 	handlers.PriceHandler(db)
 

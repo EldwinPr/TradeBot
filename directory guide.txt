@@ -4,27 +4,29 @@ trading-bot/
 │
 ├── internal/          
 │   ├── models/        # Database models
-│   │   ├── balanceModel.go
-│   │   ├── positionModel.go
-│   │   ├── priceModel.go
-│   │   └── transactionModel.go
+│   │   ├── BalanceModel.go
+│   │   ├── PositionModel.go
+│   │   ├── PriceModel.go
+│   │   └── TransactionModel.go
 │   │
 │   ├── repository/    # Database operations
-│   │   ├── balanceRepository.go
-│   │   ├── positionRepository.go
-│   │   ├── priceRepository.go
-│   │   └── transactionRepository.go
+│   │   ├── BalanceRepository.go
+│   │   ├── PositionRepository.go
+│   │   ├── PriceRepository.go
+│   │   └── TransactionRepository.go
 │   │
 │   ├── services/      # Business logic
-│   │   └──  not yet
+│   │   └── indicators/
+│   │       ├── EMA.go
+│   │       └── RSI.go
 │   │
 │   └── operations/         # Trading logic
 │       ├── priceOperations/
-│       │   ├── priceFetcher.go
-│       │   └── priceRecorder.go
+│       │   ├── PriceFetcher.go
+│       │   └── PriceRecorder.go
 │       │
 │       └── Handler/
-│           └── priceHandler.go
+│           └── PriceHandler.go
 │
 ├── pkg/               # Reusable packages
 │   └── not yet
