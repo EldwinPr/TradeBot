@@ -19,7 +19,12 @@ trading-bot/
 │   │   └──  not yet
 │   │
 │   └── operations/         # Trading logic
-│       ├── not yet
+│       ├── priceOperations/
+│       │   ├── priceFetcher.go
+│       │   └── priceRecorder.go
+│       │
+│       └── Handler/
+│           └── priceHandler.go
 │
 ├── pkg/               # Reusable packages
 │   └── not yet

@@ -26,6 +26,7 @@ price:
     - GetMultiSymbolPrices
     - GetPricesByTimeFrame
     - GetLatestPriceByTimeFrame
+    - ClearTable
 
 Position:
     - NewPriceRepository

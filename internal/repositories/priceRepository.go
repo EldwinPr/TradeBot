@@ -173,3 +173,19 @@ func (r *PriceRepository) GetLatestPriceByTimeFrame(symbol, timeFrame string) (*
 	}
 	return &price, err
 }
+
+// ClearTable removes all records from the Price table
+func (r *PriceRepository) ClearTable() error {
+	if r.db == nil {
+		return errors.New("database connection is nil")
+	}
+
+	err := r.db.Unscoped().
+		Session(&gorm.Session{AllowGlobalUpdate: true}).
+		Delete(&models.Price{}).Error
+	if err != nil {
+		return errors.New("failed to clear price table: " + err.Error())
+	}
+
+	return nil
+}
