@@ -8,46 +8,71 @@ import (
 	"os"
 
 	"github.com/adshao/go-binance/v2/futures"
-	"gorm.io/gorm"
 )
 
-func PriceHandler(db *gorm.DB, symbols []string) {
-	priceRepo := repositories.NewPriceRepository(db)
+type PriceHandler struct {
+	priceRepo     *repositories.PriceRepository
+	futuresClient *futures.Client
+	priceRecorder *priceOperations.PriceRecorder
+	priceFetcher  *priceOperations.PriceFetcher
+}
 
-	// Clear price table before starting
-	if err := priceRepo.ClearTable(); err != nil {
-		log.Printf("Error clearing price table: %v", err)
-		return
-	}
-
+func NewPriceHandler(priceRepo *repositories.PriceRepository) *PriceHandler {
 	futuresClient := futures.NewClient(os.Getenv("BINANCE_API_KEY"), os.Getenv("BINANCE_SECRET_KEY"))
 
-	ctx := context.Background()
+	return &PriceHandler{
+		priceRepo:     priceRepo,
+		futuresClient: futuresClient,
+		// Note: symbols will be passed in Start method
+		priceFetcher: priceOperations.NewPriceFetcher(futuresClient, nil),
+	}
+}
 
-	priceRecorder := priceOperations.NewPriceRecorder(futuresClient, priceRepo, symbols)
-	priceFetcher := priceOperations.NewPriceFetcher(futuresClient, symbols)
-
-	// fetch historical prices for different timeframes
-	timeframes := [4]string{"5m", "15m", "1h", "4h"}
-	days := [4]int{1, 2, 3, 4}
-	for i := 0; i < 5; i++ {
-		i := i // Create local copy for goroutine
-		go func() {
-			prices, err := priceFetcher.GetHistoricalPrices(ctx, timeframes[i], days[i])
-			if err != nil {
-				log.Printf("Error fetching historical prices for %s: %v", timeframes[i], err)
-				return
-			}
-
-			for _, price := range prices {
-				price := price
-				if err := priceRepo.Create(&price); err != nil {
-					log.Printf("Error creating price record: %v", err)
-				}
-			}
-		}()
+func (h *PriceHandler) Start(ctx context.Context, symbols []string) error {
+	// Clear price table before starting
+	if err := h.priceRepo.ClearTable(); err != nil {
+		return err
 	}
 
-	// start recording prices
-	go priceRecorder.StartRecording(ctx)
+	// Initialize PriceRecorder with symbols
+	h.priceRecorder = priceOperations.NewPriceRecorder(h.futuresClient, h.priceRepo, symbols)
+
+	// Update PriceFetcher with symbols
+	h.priceFetcher = priceOperations.NewPriceFetcher(h.futuresClient, symbols)
+
+	// Fetch initial historical data
+	if err := h.fetchHistoricalData(ctx, symbols); err != nil {
+		return err
+	}
+
+	// Start real-time price recording
+	go h.priceRecorder.StartRecording(ctx)
+
+	return nil
+}
+
+func (h *PriceHandler) fetchHistoricalData(ctx context.Context, symbols []string) error {
+	timeframes := map[string]int{
+		"5m":  30, // 30 days
+		"15m": 30, // 30 days
+		"1h":  30, // 30 days
+		"4h":  30, // 30 days
+	}
+
+	for timeframe, days := range timeframes {
+		log.Printf("Fetching %s historical data for %d days", timeframe, days)
+
+		prices, err := h.priceFetcher.GetHistoricalPrices(ctx, timeframe, days)
+		if err != nil {
+			return err
+		}
+
+		for _, price := range prices {
+			if err := h.priceRepo.Create(&price); err != nil {
+				log.Printf("Error saving historical price: %v", err)
+			}
+		}
+	}
+
+	return nil
 }

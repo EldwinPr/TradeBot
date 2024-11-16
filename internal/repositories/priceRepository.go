@@ -3,6 +3,7 @@ package repositories
 import (
 	"CryptoTradeBot/internal/models"
 	"errors"
+	"log"
 	"time"
 
 	"gorm.io/gorm"
@@ -59,21 +60,6 @@ func (r *PriceRepository) FindAll() ([]models.Price, error) {
 	var prices []models.Price
 	err := r.db.Find(&prices).Error
 	return prices, err
-}
-
-// GetLatestPrice gets the most recent price for a symbol
-func (r *PriceRepository) GetLatestPrice(symbol string) (*models.Price, error) {
-	if symbol == "" {
-		return nil, errors.New("invalid symbol")
-	}
-	var price models.Price
-	err := r.db.Where("symbol = ?", symbol).
-		Order("timestamp DESC").
-		First(&price).Error
-	if err == gorm.ErrRecordNotFound {
-		return nil, nil
-	}
-	return &price, err
 }
 
 // GetPriceHistory gets price history for a symbol within a time range
@@ -147,27 +133,54 @@ func (r *PriceRepository) GetMultiSymbolPrices(symbols []string) (map[string]*mo
 }
 
 // GetPricesByTimeFrame gets price data for a specific symbol and timeframe
-func (r *PriceRepository) GetPricesByTimeFrame(symbol, timeFrame string, start, end time.Time) ([]models.Price, error) {
+func (r *PriceRepository) GetPricesByTimeFrame(symbol string, timeFrame string, start, end time.Time) ([]models.Price, error) {
 	if symbol == "" || timeFrame == "" {
 		return nil, errors.New("invalid symbol or timeframe")
 	}
+
 	var prices []models.Price
-	err := r.db.Where("symbol = ? AND time_frame = ? AND timestamp BETWEEN ? AND ?",
+	err := r.db.Where("symbol = ? AND time_frame = ? AND open_time BETWEEN ? AND ?",
 		symbol, timeFrame, start, end).
-		Order("timestamp ASC").
+		Order("open_time ASC").
 		Find(&prices).Error
+
+	// Log the query results
+	log.Printf("Got %d prices for %s from %s to %s",
+		len(prices),
+		symbol,
+		start.Format("2006-01-02 15:04:05"),
+		end.Format("2006-01-02 15:04:05"))
+
 	return prices, err
 }
 
 // GetLatestPriceByTimeFrame gets the most recent price for a symbol and timeframe
+func (r *PriceRepository) GetLatestPrice(symbol string) (*models.Price, error) {
+	if symbol == "" {
+		return nil, errors.New("invalid symbol")
+	}
+
+	var price models.Price
+	err := r.db.Where("symbol = ?", symbol).
+		Order("open_time DESC").
+		First(&price).Error
+
+	if err == gorm.ErrRecordNotFound {
+		return nil, nil
+	}
+	return &price, err
+}
+
 func (r *PriceRepository) GetLatestPriceByTimeFrame(symbol, timeFrame string) (*models.Price, error) {
 	if symbol == "" || timeFrame == "" {
 		return nil, errors.New("invalid symbol or timeframe")
 	}
+
 	var price models.Price
 	err := r.db.Where("symbol = ? AND time_frame = ?", symbol, timeFrame).
-		Order("timestamp DESC").
+		Order("open_time DESC").
 		First(&price).Error
+
 	if err == gorm.ErrRecordNotFound {
 		return nil, nil
 	}
