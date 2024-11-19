@@ -3,25 +3,48 @@ package analysis
 import (
 	"CryptoTradeBot/internal/models"
 	"CryptoTradeBot/internal/services/indicators"
+	"fmt"
 	"math"
 	"time"
 )
 
-// Constants for analysis
 const (
-	TargetProfit  = 0.01  // 1% target
-	StopLoss      = 0.006 // 0.6% stop loss
-	MinConfidence = 0.70  // Minimum confidence for entry
+	MinimumDataPoints = 200  // Minimum candles needed
+	MinConfidence     = 0.70 // 70% minimum confidence for trade
 
-	// Lookback periods
-	ShortLook  = 5  // Immediate price action
-	MediumLook = 10 // Recent trend
+	// Fixed targets
+	TakeProfit = 0.01  // 1% target
+	StopLoss   = 0.006 // 0.6% stop loss
 )
 
 type Analysis struct {
 	ema  *indicators.EMAService
 	rsi  *indicators.RSIService
 	macd *indicators.MACDService
+}
+
+type AnalysisResult struct {
+	Symbol     string
+	Timestamp  time.Time
+	IsValid    bool
+	Direction  string // "long" or "short"
+	EntryPrice float64
+	TakeProfit float64
+	StopLoss   float64
+	Confidence float64
+	Reason     string
+	Indicators *IndicatorValues
+}
+
+type IndicatorValues struct {
+	RSI       float64
+	MACD      float64
+	Signal    float64
+	Histogram float64
+	EMA8      float64
+	EMA21     float64
+	Volume    float64
+	AvgVolume float64
 }
 
 func NewAnalysis() *Analysis {
@@ -32,65 +55,53 @@ func NewAnalysis() *Analysis {
 	}
 }
 
-// Analyze performs quick market analysis optimized for 1% moves
 func (a *Analysis) Analyze(prices []models.Price) *AnalysisResult {
-	if len(prices) < MediumLook {
-		return newInvalidResult(prices[len(prices)-1].Symbol, "insufficient data")
+	// Initial validation
+	if len(prices) < MinimumDataPoints {
+		return newInvalidResult(prices[len(prices)-1].Symbol, "insufficient data points")
 	}
 
 	// Calculate indicators
-	indicators := a.calculateIndicators(prices)
-
-	// Quick momentum check
-	momentum := a.checkMomentum(prices[len(prices)-ShortLook:])
-
-	// Volume analysis
-	volume := a.checkVolume(prices[len(prices)-ShortLook:])
-
-	// Calculate setup confidence
-	confidence := a.calculateConfidence(indicators, momentum, volume)
-
-	// Determine direction
-	direction := a.determineDirection(indicators, momentum)
-
-	if confidence < MinConfidence {
-		return newInvalidResult(prices[len(prices)-1].Symbol, "low confidence")
+	indicators, err := a.calculateIndicators(prices)
+	if err != nil {
+		return newInvalidResult(prices[len(prices)-1].Symbol, fmt.Sprintf("indicator calculation failed: %v", err))
 	}
 
-	currentPrice := prices[len(prices)-1].Close
+	// Current price info
+	currentPrice := prices[len(prices)-1]
 
+	// Determine trading setup
+	direction := a.determineDirection(indicators)
+	if direction == "" {
+		return newInvalidResult(currentPrice.Symbol, "no clear direction")
+	}
+
+	// Calculate confidence
+	confidence := a.calculateConfidence(indicators, direction)
+	if confidence < MinConfidence {
+		return newInvalidResult(currentPrice.Symbol, "insufficient confidence")
+	}
+
+	// Valid setup found, calculate targets
 	return &AnalysisResult{
-		Symbol:     prices[len(prices)-1].Symbol,
-		Timestamp:  time.Now(),
+		Symbol:     currentPrice.Symbol,
+		Timestamp:  currentPrice.OpenTime,
 		IsValid:    true,
 		Direction:  direction,
-		EntryPrice: currentPrice,
-		TakeProfit: calculateTarget(currentPrice, direction),
-		StopLoss:   calculateStop(currentPrice, direction),
+		EntryPrice: currentPrice.Close,
+		TakeProfit: calculateTarget(currentPrice.Close, direction, TakeProfit),
+		StopLoss:   calculateTarget(currentPrice.Close, direction, StopLoss),
 		Confidence: confidence,
+		Reason:     "valid setup found",
+		Indicators: indicators,
 	}
 }
 
-// checkMomentum analyzes short-term price movement
-func (a *Analysis) checkMomentum(prices []models.Price) float64 {
-	if len(prices) < 2 {
-		return 0
-	}
-
-	// Calculate rapid price changes
-	changes := make([]float64, len(prices)-1)
-	for i := 1; i < len(prices); i++ {
-		changes[i-1] = (prices[i].Close - prices[i-1].Close) / prices[i-1].Close
-	}
-
-	// Return recent momentum strength
-	return math.Abs(sum(changes))
-}
-
-func (a *Analysis) calculateIndicators(prices []models.Price) *IndicatorValues {
-	// Extract close prices
+func (a *Analysis) calculateIndicators(prices []models.Price) (*IndicatorValues, error) {
+	// Extract price data
 	closes := make([]float64, len(prices))
 	volumes := make([]float64, len(prices))
+
 	for i, p := range prices {
 		closes[i] = p.Close
 		volumes[i] = p.Volume
@@ -98,117 +109,131 @@ func (a *Analysis) calculateIndicators(prices []models.Price) *IndicatorValues {
 
 	// Calculate EMAs
 	ema8 := a.ema.Calculate(closes, 8)
+	if ema8 == nil {
+		return nil, fmt.Errorf("EMA8 calculation failed")
+	}
+
 	ema21 := a.ema.Calculate(closes, 21)
+	if ema21 == nil {
+		return nil, fmt.Errorf("EMA21 calculation failed")
+	}
 
 	// Calculate RSI
 	rsi := a.rsi.Calculate(closes, 14)
+	if rsi == nil {
+		return nil, fmt.Errorf("RSI calculation failed")
+	}
 
 	// Calculate MACD
 	macdResult := a.macd.Calculate(closes, 12, 26, 9)
+	if macdResult == nil {
+		return nil, fmt.Errorf("MACD calculation failed")
+	}
 
-	// Get latest volume
-	currentVolume := volumes[len(volumes)-1]
+	// Calculate average volume (last 20 periods)
+	avgVolume := calculateAverageVolume(volumes, 20)
+
+	// Get latest values
+	lastIndex := len(prices) - 1
 
 	return &IndicatorValues{
-		RSI:       rsi[len(rsi)-1],
-		MACD:      macdResult.MACD[len(macdResult.MACD)-1],
-		Signal:    macdResult.Signal[len(macdResult.Signal)-1],
-		Histogram: macdResult.Histogram[len(macdResult.Histogram)-1],
-		EMA8:      ema8[len(ema8)-1],
-		EMA21:     ema21[len(ema21)-1],
-		Volume:    currentVolume,
-	}
+		RSI:       rsi[lastIndex],
+		MACD:      macdResult.MACD[lastIndex],
+		Signal:    macdResult.Signal[lastIndex],
+		Histogram: macdResult.Histogram[lastIndex],
+		EMA8:      ema8[lastIndex],
+		EMA21:     ema21[lastIndex],
+		Volume:    volumes[lastIndex],
+		AvgVolume: avgVolume,
+	}, nil
 }
 
-func (a *Analysis) checkVolume(prices []models.Price) bool {
-	if len(prices) < 2 {
-		return false
-	}
-
-	// Calculate average volume
-	var avgVolume float64
-	for i := 0; i < len(prices)-1; i++ {
-		avgVolume += prices[i].Volume
-	}
-	avgVolume /= float64(len(prices) - 1)
-
-	// Check if current volume is higher
-	return prices[len(prices)-1].Volume > avgVolume*1.2
-}
-
-// calculateConfidence determines entry probability
-func (a *Analysis) calculateConfidence(ind *IndicatorValues, momentum float64, volume bool) float64 {
-	baseConf := 0.0
-
-	// Trend alignment check
-	if ind.EMA8 > ind.EMA21 && momentum > 0 {
-		baseConf += 0.4
-	} else if ind.EMA8 < ind.EMA21 && momentum < 0 {
-		baseConf += 0.4
-	}
-
-	// RSI check (favor swings back from extremes)
-	if ind.RSI > 40 && ind.RSI < 60 {
-		baseConf += 0.3
-	}
-
-	// MACD confirmation
-	if (ind.MACD > ind.Signal && momentum > 0) ||
-		(ind.MACD < ind.Signal && momentum < 0) {
-		baseConf += 0.3
-	}
-
-	// Volume adjustment
-	if volume {
-		baseConf *= 1.2
-	} else {
-		baseConf *= 0.8
-	}
-
-	return math.Min(baseConf, 1.0)
-}
-
-// determineDirection identifies optimal trade direction
-func (a *Analysis) determineDirection(ind *IndicatorValues, momentum float64) string {
-	// Combine EMA and momentum direction
-	if ind.EMA8 > ind.EMA21 && momentum > 0 {
+func (a *Analysis) determineDirection(ind *IndicatorValues) string {
+	// Check for long setup
+	if isLongSetup(ind) {
 		return "long"
-	} else if ind.EMA8 < ind.EMA21 && momentum < 0 {
-		return "short"
 	}
 
+	// For now, we're only taking long trades
 	return ""
 }
 
-// Helper functions for price calculations
-func calculateTarget(price float64, direction string) float64 {
-	if direction == "long" {
-		return price * (1 + TargetProfit)
+func isLongSetup(ind *IndicatorValues) bool {
+	// EMA alignment
+	if ind.EMA8 <= ind.EMA21 {
+		return false
 	}
-	return price * (1 - TargetProfit)
+
+	// RSI conditions (not oversold or overbought)
+	if ind.RSI <= 40 || ind.RSI >= 75 {
+		return false
+	}
+
+	// MACD confirmation
+	if ind.MACD <= ind.Signal {
+		return false
+	}
+
+	// Volume confirmation
+	if ind.Volume < ind.AvgVolume {
+		return false
+	}
+
+	return true
 }
 
-func calculateStop(price float64, direction string) float64 {
-	if direction == "long" {
-		return price * (1 - StopLoss)
+func (a *Analysis) calculateConfidence(ind *IndicatorValues, direction string) float64 {
+	if direction != "long" {
+		return 0
 	}
-	return price * (1 + StopLoss)
+
+	var confidence float64
+
+	// EMA trend strength (40%)
+	emaSpread := (ind.EMA8 - ind.EMA21) / ind.EMA21
+	confidence += math.Min(emaSpread*20, 0.4) // Cap at 0.4
+
+	// RSI position (30%)
+	if ind.RSI > 40 && ind.RSI < 75 {
+		rsiScore := (ind.RSI - 40) / 35 // Normalize to 0-1
+		confidence += rsiScore * 0.3
+	}
+
+	// MACD momentum (30%)
+	if ind.MACD > ind.Signal {
+		macdScore := math.Min(ind.Histogram/ind.Signal, 1.0)
+		confidence += macdScore * 0.3
+	}
+
+	return confidence
 }
 
-func sum(values []float64) float64 {
-	var total float64
-	for _, v := range values {
-		total += v
+func calculateTarget(price float64, direction string, percentage float64) float64 {
+	if direction == "long" {
+		return price * (1 + percentage)
 	}
-	return total
+	return price * (1 - percentage)
+}
+
+func calculateAverageVolume(volumes []float64, periods int) float64 {
+	if len(volumes) < periods {
+		return 0
+	}
+
+	start := len(volumes) - periods
+	var sum float64
+	for i := start; i < len(volumes); i++ {
+		sum += volumes[i]
+	}
+
+	return sum / float64(periods)
 }
 
 func newInvalidResult(symbol, reason string) *AnalysisResult {
 	return &AnalysisResult{
-		Symbol:     symbol,
-		Timestamp:  time.Now(),
-		IsValid:    false,
-		Reason:     reason,
-		Confidence: 0,
+		Symbol:    symbol,
+		Timestamp: time.Now(),
+		IsValid:   false,
+		Reason:    reason,
 	}
 }
