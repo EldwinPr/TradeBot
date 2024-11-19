@@ -3,6 +3,7 @@ package repositories
 import (
 	"CryptoTradeBot/internal/models"
 	"errors"
+	"log"
 	"time"
 
 	"gorm.io/gorm"
@@ -144,11 +145,11 @@ func (r *PriceRepository) GetPricesByTimeFrame(symbol string, timeFrame string, 
 		Find(&prices).Error
 
 	// Log the query results
-	// log.Printf("Got %d prices for %s from %s to %s",
-	// 	len(prices),
-	// 	symbol,
-	// 	start.Format("2006-01-02 15:04:05"),
-	// 	end.Format("2006-01-02 15:04:05"))
+	log.Printf("Got %d prices for %s from %s to %s",
+		len(prices),
+		symbol,
+		start.Format("2006-01-02 15:04:05"),
+		end.Format("2006-01-02 15:04:05"))
 
 	return prices, err
 }
