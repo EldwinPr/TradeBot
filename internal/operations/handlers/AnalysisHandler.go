@@ -113,8 +113,12 @@ func (h *AnalysisHandler) openPosition(result *analysis.AnalysisResult) error {
 		return fmt.Errorf("failed to get balance: %v", err)
 	}
 
-	// Calculate position size
-	positionSize := (balance.Balance * RiskPerTrade) * float64(Leverage)
+	// Use the balance variable to log the current balance
+	log.Printf("Current balance: %.2f USDT", balance.Balance)
+
+	// Calculate position size using fixed size
+	const FixedSize = 1.0 // $1 per trade
+	positionSize := (FixedSize / result.EntryPrice) * float64(Leverage)
 
 	position := &models.Position{
 		Symbol:          result.Symbol,
@@ -127,6 +131,8 @@ func (h *AnalysisHandler) openPosition(result *analysis.AnalysisResult) error {
 		OpenTime:        time.Now(),
 		Status:          models.PositionStatusOpen,
 		PnL:             0,
+		CreatedAt:       time.Now(),
+		UpdatedAt:       time.Now(),
 	}
 
 	return h.positionRepo.Create(position)
@@ -164,7 +170,6 @@ func (h *AnalysisHandler) checkOpenPositions() error {
 }
 
 func (h *AnalysisHandler) checkPosition(position *models.Position) error {
-	// Get current price
 	latest, err := h.priceRepo.GetLatestPrice(position.Symbol)
 	if err != nil {
 		return fmt.Errorf("failed to get price: %v", err)
@@ -174,15 +179,14 @@ func (h *AnalysisHandler) checkPosition(position *models.Position) error {
 	shouldClose := false
 	pnl := 0.0
 
-	// Check for take profit or stop loss
 	if position.Side == models.PositionSideLong {
 		if currentPrice >= position.TakeProfitPrice || currentPrice <= position.StopLossPrice {
-			pnl = (currentPrice - position.EntryPrice) * position.Size * float64(position.Leverage)
+			pnl = (currentPrice - position.EntryPrice) * position.Size
 			shouldClose = true
 		}
 	} else {
 		if currentPrice <= position.TakeProfitPrice || currentPrice >= position.StopLossPrice {
-			pnl = (position.EntryPrice - currentPrice) * position.Size * float64(position.Leverage)
+			pnl = (position.EntryPrice - currentPrice) * position.Size
 			shouldClose = true
 		}
 	}
@@ -195,17 +199,15 @@ func (h *AnalysisHandler) checkPosition(position *models.Position) error {
 }
 
 func (h *AnalysisHandler) closePosition(position *models.Position, closePrice, pnl float64) error {
-	// Update position
 	position.CloseTime = time.Now()
 	position.Status = models.PositionStatusClosed
 	position.PnL = pnl
+	position.UpdatedAt = time.Now()
 
-	// Save position
 	if err := h.positionRepo.Update(position); err != nil {
 		return fmt.Errorf("failed to update position: %v", err)
 	}
 
-	// Update balance
 	balance, err := h.balanceRepo.FindBySymbol("USDT")
 	if err != nil {
 		return fmt.Errorf("failed to get balance: %v", err)
@@ -218,7 +220,7 @@ func (h *AnalysisHandler) closePosition(position *models.Position, closePrice, p
 		return fmt.Errorf("failed to update balance: %v", err)
 	}
 
-	log.Printf("Closed position: %s %s | Entry: %.8f Exit: %.8f | PnL: %.2f USDT",
+	log.Printf("Position closed: %s %s | Entry: %.8f Exit: %.8f | PnL: %.2f USDT",
 		position.Symbol, position.Side, position.EntryPrice, closePrice, pnl)
 
 	return nil

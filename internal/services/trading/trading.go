@@ -17,31 +17,25 @@ type PaperTrader struct {
 }
 
 const (
-	InitialBalance = 1000.0 // USDT
-	Leverage       = 50     // Fixed leverage
-	RiskPerTrade   = 0.02   // 2% per trade
+	InitialBalance = 10.0 // USDT - Match backtesting initial balance
+	Leverage       = 50   // Fixed leverage
+	FixedSize      = 1.0  // $1 per trade - Fixed dollar amount instead of percentage
 )
 
-func NewPaperTrader(positionRepo *repositories.PositionRepository,
-	priceRepo *repositories.PriceRepository,
-	balanceRepo *repositories.BalanceRepository) *PaperTrader {
-	return &PaperTrader{
-		positionRepo: positionRepo,
-		priceRepo:    priceRepo,
-		balanceRepo:  balanceRepo,
-	}
-}
-
-// OpenPosition creates new paper trade position
 func (t *PaperTrader) OpenPosition(result *analysis.AnalysisResult) error {
-	// Get current balance
+	// Get current balance for validation only
 	balance, err := t.balanceRepo.FindBySymbol("USDT")
 	if err != nil {
 		return fmt.Errorf("failed to get balance: %v", err)
 	}
 
-	// Calculate position size
-	positionSize := (balance.Balance * RiskPerTrade) * float64(Leverage)
+	// Ensure we have enough balance
+	if balance.Balance < FixedSize {
+		return fmt.Errorf("insufficient balance: %.2f USDT", balance.Balance)
+	}
+
+	// Calculate position size based on fixed $1 per trade
+	positionSize := (FixedSize / result.EntryPrice) * float64(Leverage)
 
 	position := &models.Position{
 		Symbol:          result.Symbol,

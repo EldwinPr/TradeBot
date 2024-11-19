@@ -197,6 +197,17 @@ func runBacktest(priceRepo *repositories.PriceRepository,
 		log.Fatal(err)
 	}
 
+	fmt.Println("\nTrade History:")
+	for _, trade := range results.Trades {
+		fmt.Printf("%s: %s %s Entry: %.8f Exit: %.8f PnL: %.2f\n",
+			trade.EntryTime.Format("2006-01-02 15:04"),
+			trade.Symbol,
+			trade.Side,
+			trade.EntryPrice,
+			trade.ExitPrice,
+			trade.PnL)
+	}
+
 	// Print results
 	fmt.Println("\nBacktest Results:")
 	fmt.Printf("Period: %s to %s\n", startTime.Format("2006-01-02"), endTime.Format("2006-01-02"))
@@ -210,14 +221,5 @@ func runBacktest(priceRepo *repositories.PriceRepository,
 	fmt.Printf("Sharpe Ratio: %.2f\n", results.SharpeRatio)
 
 	// Optional: Print detailed trade history to console
-	fmt.Println("\nTrade History:")
-	for _, trade := range results.Trades {
-		fmt.Printf("%s: %s %s Entry: %.8f Exit: %.8f PnL: %.2f\n",
-			trade.EntryTime.Format("2006-01-02 15:04"),
-			trade.Symbol,
-			trade.Side,
-			trade.EntryPrice,
-			trade.ExitPrice,
-			trade.PnL)
-	}
+
 }

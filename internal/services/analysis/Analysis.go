@@ -11,7 +11,7 @@ import (
 const (
 	TargetProfit  = 0.01  // 1% target
 	StopLoss      = 0.006 // 0.6% stop loss
-	MinConfidence = 0.70  // Minimum confidence for entry
+	MinConfidence = 0.7   // Minimum confidence for entry
 
 	// Lookback periods
 	ShortLook  = 5  // Immediate price action
