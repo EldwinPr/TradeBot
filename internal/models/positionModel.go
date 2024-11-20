@@ -19,6 +19,8 @@ type Position struct {
 	CloseTime time.Time `gorm:"index"`
 	Status    string    `gorm:"not null"`
 
+	Confidence float64 `gorm:"type:decimal(20,8)"`
+
 	CreatedAt time.Time `gorm:"autoCreateTime"`
 	UpdatedAt time.Time `gorm:"autoUpdateTime"`
 	DeletedAt time.Time `gorm:"index"`

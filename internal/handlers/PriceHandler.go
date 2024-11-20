@@ -45,10 +45,10 @@ func (h *PriceHandler) Start(ctx context.Context) error {
 
 func (h *PriceHandler) fetchHistoricalData(ctx context.Context) error {
 	timeframes := map[string]int{
-		"5m":  7,
-		"15m": 7,
-		"1h":  7,
-		"4h":  7,
+		"5m":  31,
+		"15m": 31,
+		"1h":  31,
+		"4h":  31,
 	}
 
 	for timeframe, days := range timeframes {

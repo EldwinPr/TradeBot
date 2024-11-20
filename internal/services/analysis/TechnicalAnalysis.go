@@ -48,33 +48,36 @@ func (a *TechnicalAnalyzer) Analyze(prices5m, prices15m, prices1h, prices4h []mo
 func (a *TechnicalAnalyzer) analyzeTimeframe(prices []models.Price) *TechnicalData {
 	closes := extractCloses(prices)
 
-	// Calculate EMAs (unchanged)
+	// Calculate EMAs
 	ema8Values := a.ema.Calculate(closes, 8)
 	ema21Values := a.ema.Calculate(closes, 21)
 
-	// Get latest EMAs (unchanged)
-	ema8Result := a.ema.CalculatePoint(
-		closes[len(closes)-1],
-		ema8Values[len(ema8Values)-2],
-		8,
-	)
-
-	// Check crossovers (unchanged)
+	// Get EMA crossover
 	crossSignal := a.ema.CheckCrossover(ema8Values, ema21Values)
 
-	// Calculate RSI with signal
-	rsi := a.rsi.Calculate(closes, 14, 3)
+	// Get RSI params from service
+	rsiParams := a.rsi.GetOptimalParameters()
 
-	// Need: price, prevPrice, prevGain, prevLoss, prevRSI, prevSignal, period, smoothPeriod
+	// Calculate full RSI with all components
+	rsiResult := a.rsi.Calculate(closes, rsiParams.Period, rsiParams.SmoothPeriod)
+
+	// Get latest values
+	currentRSI := rsiResult.RSI[len(rsiResult.RSI)-1]
+	prevRSI := rsiResult.RSI[len(rsiResult.RSI)-2]
+	currentSignal := rsiResult.Signal[len(rsiResult.Signal)-1]
+	prevSignal := rsiResult.Signal[len(rsiResult.Signal)-2]
+	currentDivergence := rsiResult.Divergence[len(rsiResult.Divergence)-1]
+
+	// Get RSI point analysis
 	rsiPoint := a.rsi.CalculatePoint(
-		closes[len(closes)-1],         // price
-		closes[len(closes)-2],         // prevPrice
-		0.0,                           // prevGain
-		0.0,                           // prevLoss
-		rsi.RSI[len(rsi.RSI)-2],       // prevRSI
-		rsi.Signal[len(rsi.Signal)-2], // prevSignal
-		14,                            // period
-		3,                             // smoothPeriod
+		closes[len(closes)-1], // Current price
+		closes[len(closes)-2], // Previous price
+		currentRSI,            // Current RSI
+		currentSignal,         // Current signal
+		prevRSI,               // Previous RSI
+		prevSignal,            // Previous signal
+		rsiParams.Period,
+		rsiParams.SmoothPeriod,
 	)
 
 	td := &TechnicalData{
@@ -88,22 +91,27 @@ func (a *TechnicalAnalyzer) analyzeTimeframe(prices []models.Price) *TechnicalDa
 				8:  ema8Values[len(ema8Values)-1],
 				21: ema21Values[len(ema21Values)-1],
 			},
-			Direction: ema8Result.Direction,
-			Slope:     ema8Result.Slope,
+			Direction: crossSignal.Direction,
 			Strength:  crossSignal.Strength,
 		},
 		RSI: struct {
-			Value     float64
-			Signal    float64
-			Histogram float64
-			Trend     int
-			Strength  float64
+			Value      float64
+			Signal     float64
+			Histogram  float64
+			Divergence float64
+			Trend      int
+			Strength   float64
+			CrossAbove bool
+			CrossBelow bool
 		}{
-			Value:     rsiPoint.Value,
-			Signal:    rsiPoint.Signal,
-			Histogram: rsiPoint.Histogram,
-			Trend:     rsiPoint.Trend,
-			Strength:  rsiPoint.Strength,
+			Value:      rsiPoint.Value,
+			Signal:     rsiPoint.Signal,
+			Histogram:  rsiPoint.Histogram,
+			Divergence: currentDivergence,
+			Trend:      rsiPoint.Trend,
+			Strength:   rsiPoint.Strength,
+			CrossAbove: rsiPoint.CrossAbove,
+			CrossBelow: rsiPoint.CrossBelow,
 		},
 	}
 

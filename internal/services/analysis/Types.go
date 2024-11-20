@@ -37,20 +37,23 @@ type timeframeVolumeMetrics struct { // VolumeData
 /*---------------- technical analysis ----------------*/
 // TechnicalData holds indicator-based metrics
 type TechnicalData struct {
-	Signal     int     // 1: bullish, -1: bearish, 0: neutral
-	Confidence float64 // 0-1
+	Signal     int // 1: bullish, -1: bearish, 0: neutral
+	Confidence float64
 	EMA        struct {
 		Values    map[int]float64
-		Direction int // 1: up, -1: down, 0: neutral
+		Direction int
 		Slope     float64
 		Strength  float64
 	}
 	RSI struct {
-		Value     float64
-		Signal    float64
-		Histogram float64
-		Trend     int // 1: bullish, -1: bearish, 0: neutral
-		Strength  float64
+		Value      float64
+		Signal     float64
+		Histogram  float64
+		Divergence float64 // Added divergence
+		Trend      int
+		Strength   float64
+		CrossAbove bool // Added crossover detection
+		CrossBelow bool
 	}
 }
 
