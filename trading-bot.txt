@@ -1,0 +1,186 @@
+trading-bot/
+├── internal/
+│   ├── models/          
+│   │   └── ... (keep existing)
+│   │
+│   ├── repositories/    
+│   │   └── ... (keep existing)
+│   │
+│   ├── operations/      # Low-level operations
+│   │   ├── price/
+│   │   │   ├── fetcher.go      (Binance price fetching)
+│   │   │   └── recorder.go     (Price recording to DB)
+│   │   │
+│   │   ├── position/
+│   │   │   ├── monitor.go      (Position status checking)
+│   │   │   └── executor.go     (Position open/close execution)
+│   │   │
+│   │   └── binance/            (Exchange-specific operations)
+│   │       └── client.go       (Binance API operations)
+│   │
+│   ├── services/        # Business logic
+│   │   ├── analysis/
+│   │   │   ├── service.go      (Analysis logic)
+│   │   │   ├── indicators/
+│   │   │   └── types.go
+│   │   │
+│   │   └── trading/
+│   │       ├── service.go      (Trading strategy)
+│   │       └── types.go
+│   │
+│   └── handlers/        # Concurrency control
+│       ├── price/
+│       │   └── handler.go      (Manages price operations)
+│       │
+│       └── trading/
+│           └── handler.go      (Manages trading operations)
+```
+
+This maintains clear separation:
+1. Operations: Raw interactions with exchange and data
+2. Services: Strategy and analysis logic
+3. Handlers: Concurrency and coordination
+
+Here's the step-by-step rebuild plan, keeping operations:
+
+1. Operations Layer (Build First)
+```go
+// internal/operations/price/
+type PriceFetcher struct {
+    client *futures.Client
+    // Fetch real-time prices from Binance
+}
+
+type PriceRecorder struct {
+    client    *futures.Client
+    priceRepo *repositories.PriceRepository
+    // Record prices to database
+}
+
+// internal/operations/position/
+type PositionExecutor struct {
+    client       *futures.Client
+    positionRepo *repositories.PositionRepository
+    balanceRepo  *repositories.BalanceRepository
+    // Execute position opens/closes
+}
+
+type PositionMonitor struct {
+    positionRepo *repositories.PositionRepository
+    // Monitor position status
+}
+
+// internal/operations/binance/
+type BinanceClient struct {
+    // Unified Binance operations
+}
+```
+
+2. Services Layer (Core Logic)
+```go
+// internal/services/analysis/
+type AnalysisService struct {
+    indicators *indicators.Service
+    // Analysis logic from your existing code
+}
+
+// internal/services/trading/
+type TradingService struct {
+    analysis  *analysis.Service
+    // Trading strategy logic
+}
+```
+
+3. Handlers Layer (Concurrency)
+```go
+// internal/handlers/price/
+type PriceHandler struct {
+    fetcher  *operations.PriceFetcher
+    recorder *operations.PriceRecorder
+    // Manage price operations concurrently
+}
+
+// internal/handlers/trading/
+type TradingHandler struct {
+    trading   *services.TradingService
+    positions *operations.PositionExecutor
+    // Manage trading operations concurrently
+}
+```
+
+Implementation Order:
+
+1. Price Operations:
+```
+- Move existing price fetcher and recorder
+- Clean up error handling
+- Add proper logging
+```
+
+2. Position Operations:
+```
+- Split position execution and monitoring
+- Implement proper error handling
+- Add safety checks
+```
+
+3. Analysis Service:
+```
+- Clean up existing analysis code
+- Improve indicator calculations
+- Add validation
+```
+
+4. Trading Service:
+```
+- Implement clean strategy logic
+- Add risk management
+- Add market condition checks
+```
+
+5. Price Handler:
+```
+- Manage price streams
+- Handle concurrent operations
+- Implement error recovery
+```
+
+6. Trading Handler:
+```
+- Coordinate trading operations
+- Manage position lifecycle
+- Handle concurrent trades
+```
+
+7. Main Integration:
+```go
+func main() {
+    // Init operations
+    priceFetcher := operations.NewPriceFetcher(client)
+    priceRecorder := operations.NewPriceRecorder(client, priceRepo)
+    positionExecutor := operations.NewPositionExecutor(client, positionRepo)
+    
+    // Init services
+    analysis := services.NewAnalysisService()
+    trading := services.NewTradingService(analysis)
+    
+    // Init handlers
+    priceHandler := handlers.NewPriceHandler(priceFetcher, priceRecorder)
+    tradingHandler := handlers.NewTradingHandler(trading, positionExecutor)
+    
+    // Start system
+    ctx := context.Background()
+    go priceHandler.Start(ctx)
+    go tradingHandler.Start(ctx)
+}
+```
+
+Key Points:
+1. Operations handle raw interactions
+2. Services contain business logic
+3. Handlers manage concurrency
+4. Clear error handling at each layer
+5. Proper logging throughout
+6. Testable components
+
+Would you like me to detail any specific component's implementation?
