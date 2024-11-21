@@ -28,7 +28,7 @@ func NewLongStrategy() *LongStrategy {
 	return &LongStrategy{
 		targetProfit:      0.01,
 		stopLoss:          0.006,
-		minConfidence:     0.70,
+		minConfidence:     0.7,
 		volumeWeight:      0.30,
 		technicalWeight:   0.35,
 		priceWeight:       0.35,
@@ -85,32 +85,31 @@ func (s *LongStrategy) Analyze(prices5m, prices15m, prices1h, prices4h []models.
 
 // Validate long setup conditions
 func (s *LongStrategy) validateLongSetup(vol *analysis.VolumeData, tech *analysis.TechnicalData, price *analysis.PriceData) bool {
-	// Volume conditions
-	volumeValid := vol.VolumeRatio > 1.2 && vol.Confidence > 0.6
+	// Just check basic conditions for possible setup
+	technicalValid := tech.RSI.Value < 75 && tech.RSI.Value > 25 // Wide RSI range
+	priceValid := tech.EMA.Direction >= 0 || tech.EMA.Slope > 0  // Any upward movement
+	volumeValid := vol.VolumeRatio > 0.45                        // Basic volume check
 
-	// Technical conditions
-	technicalValid := tech.EMA.Direction > 0 &&
-		tech.RSI.Value > 40 && tech.RSI.Value < 70 &&
-		tech.Signal > 0
-
-	// Price conditions
-	priceValid := price.Momentum > 0 && price.Signal > 0
-
-	// Need all three to be valid
-	return volumeValid && technicalValid && priceValid
+	return technicalValid && priceValid && volumeValid
 }
 
 // Calculate overall confidence score
 func (s *LongStrategy) calculateConfidence(vol *analysis.VolumeData, tech *analysis.TechnicalData, price *analysis.PriceData) float64 {
-	volScore := vol.Confidence * s.volumeWeight
-	techScore := tech.Confidence * s.technicalWeight
-	priceScore := price.Confidence * s.priceWeight
+	// Base confidence much lower
+	confidence := 0.3 // Start with 30% base
 
-	// Base confidence
-	confidence := volScore + techScore + priceScore
+	// Add small boosts for good conditions
+	if vol.VolumeRatio > 1.0 {
+		confidence += 0.1
+	}
+	if tech.EMA.Direction > 0 {
+		confidence += 0.1
+	}
+	if tech.RSI.Value > 40 && tech.RSI.Value < 60 {
+		confidence += 0.1
+	}
 
-	// Apply modifiers
-	confidence = s.applyModifiers(confidence, vol, tech, price)
+	s.minConfidence = 0.3 // Lower minimum confidence threshold
 
 	return math.Min(confidence, 1.0)
 }

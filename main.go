@@ -12,7 +12,9 @@ import (
 	"CryptoTradeBot/config"
 	"CryptoTradeBot/internal/handlers"
 	"CryptoTradeBot/internal/models"
+	"CryptoTradeBot/internal/operations/backtest"
 	"CryptoTradeBot/internal/repositories"
+	"CryptoTradeBot/internal/services/strategy"
 
 	"github.com/adshao/go-binance/v2/futures"
 	"gorm.io/driver/postgres"
@@ -44,6 +46,7 @@ func main() {
 
 	// Initialize repository
 	priceRepo := repositories.NewPriceRepository(db)
+	positionRepo := repositories.NewPositionRepository(db)
 
 	// Initialize Binance client
 	futuresClient := futures.NewClient(cfg.Exchange.APIKey, cfg.Exchange.SecretKey)
@@ -61,6 +64,40 @@ func main() {
 	}
 
 	log.Println("Price recording started...")
+
+	// Initialize strategy components
+	strategyManager := strategy.NewStrategyManager()
+
+	// Setup backtest config
+	backtestConfig := backtest.Config{
+		InitialBalance: backtest.InitialBalance,
+		Leverage:       backtest.Leverage,
+		Symbols:        cfg.Symbols, // Your symbols
+		StartTime:      time.Date(2024, 11, 17, 0, 0, 0, 0, time.UTC),
+		EndTime:        time.Date(2024, 11, 20, 0, 0, 0, 0, time.UTC),
+	}
+
+	// Create and run engine
+	engine := backtest.NewEngine(priceRepo, positionRepo, strategyManager, backtestConfig)
+	results, err := engine.RunBacktest(
+		backtestConfig.StartTime,
+		backtestConfig.EndTime,
+		backtestConfig.Symbols,
+	)
+	if err != nil {
+		log.Fatal("Backtest failed:", err)
+	}
+
+	// Print results
+	fmt.Println("\n=== Backtest Results ===")
+	fmt.Printf("Total Trades: %d\n", results.TotalTrades)
+	fmt.Printf("Winning Trades: %d (%.2f%%)\n",
+		results.WinningTrades,
+		float64(results.WinningTrades)/float64(results.TotalTrades)*100)
+	fmt.Printf("Average PnL: $%.2f\n", results.AveragePnL)
+	fmt.Printf("Max Drawdown: %.2f%%\n", results.MaxDrawdown*100)
+	fmt.Printf("Final Balance: $%.2f\n", results.FinalBalance)
+	fmt.Printf("Sharpe Ratio: %.2f\n", results.SharpeRatio)
 
 	// Handle shutdown
 	c := make(chan os.Signal, 1)
@@ -85,6 +122,9 @@ func setupDatabase(dbConfig config.DatabaseConfig) *gorm.DB {
 	db, err := gorm.Open(postgres.Open(dsn), &gorm.Config{
 		Logger: logger.Default.LogMode(logger.Error),
 	})
+
+	db.AutoMigrate(&models.Position{})
+
 	if err != nil {
 		log.Fatal("Failed to connect to database:", err)
 	}

@@ -87,53 +87,34 @@ func (s *RSIService) Calculate(prices []float64, period int, smoothPeriod int) *
 }
 
 // CalculatePoint provides detailed analysis for the latest point
-func (s *RSIService) CalculatePoint(price, prevPrice float64, prevGain, prevLoss float64,
-	prevRSI, prevSignal float64, period int, smoothPeriod int) *RSIPoint {
-
-	// Calculate current gain/loss
-	var currentGain, currentLoss float64
-	change := price - prevPrice
-	if change > 0 {
-		currentGain = change
-		currentLoss = 0
-	} else {
-		currentGain = 0
-		currentLoss = math.Abs(change)
+func (s *RSIService) CalculatePoint(
+	price, prevPrice float64,
+	currentRSI, prevRSI float64,
+	currentSignal, prevSignal float64,
+	period int,
+	smoothPeriod int,
+) *RSIPoint {
+	if period <= 0 || smoothPeriod <= 0 {
+		return &RSIPoint{} // Return empty point or error value
 	}
 
-	// Calculate smoothed gain/loss using EMA
-	newGain := s.ema.Calculate([]float64{prevGain, currentGain}, period)[1]
-	newLoss := s.ema.Calculate([]float64{prevLoss, currentLoss}, period)[1]
-
-	// Calculate RSI
-	var rsiValue float64
-	if newLoss == 0 {
-		rsiValue = 100
-	} else {
-		rs := newGain / newLoss
-		rsiValue = 100 - (100 / (1 + rs))
-	}
-
-	// Calculate signal line
-	signalValue := s.ema.Calculate([]float64{prevSignal, rsiValue}, smoothPeriod)[1]
-
-	// Calculate histogram
-	histogram := rsiValue - signalValue
+	// No need for gain/loss calculation here since we already have RSI values
+	histogram := currentRSI - currentSignal
 
 	// Determine trend and strength
-	trend := s.determineTrend(rsiValue, signalValue, histogram)
-	strength := s.calculateStrength(rsiValue)
+	trend := s.determineTrend(currentRSI, currentSignal, histogram)
+	strength := s.calculateStrength(currentRSI)
 
 	return &RSIPoint{
-		Value:        rsiValue,
-		Signal:       signalValue,
+		Value:        currentRSI,
+		Signal:       currentSignal,
 		Histogram:    histogram,
 		Trend:        trend,
 		Strength:     strength,
-		IsOverbought: rsiValue >= 70,
-		IsOversold:   rsiValue <= 30,
-		CrossAbove:   prevRSI <= prevSignal && rsiValue > signalValue,
-		CrossBelow:   prevRSI >= prevSignal && rsiValue < signalValue,
+		IsOverbought: currentRSI >= 70,
+		IsOversold:   currentRSI <= 30,
+		CrossAbove:   prevRSI <= prevSignal && currentRSI > currentSignal,
+		CrossBelow:   prevRSI >= prevSignal && currentRSI < currentSignal,
 	}
 }
 

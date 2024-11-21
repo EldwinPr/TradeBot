@@ -30,10 +30,16 @@ func (f *PriceFetcher) FetchPrices(ctx context.Context, timeframe string, days i
 
 	// Calculate time chunks based on timeframe
 	chunkDuration := calculateChunkDuration(timeframe)
-	currentEnd := endTime
-	currentStart := currentEnd.Add(-chunkDuration)
+	currentStart := startTime
+	currentEnd := currentStart.Add(chunkDuration)
 
-	for currentStart.After(startTime) {
+	// Process until we reach end time
+	for currentStart.Before(endTime) {
+		// Adjust if the end chunk would go past endTime
+		if currentEnd.After(endTime) {
+			currentEnd = endTime
+		}
+
 		for _, symbol := range f.symbols {
 			klines, err := f.client.NewKlinesService().
 				Symbol(symbol).
@@ -75,14 +81,9 @@ func (f *PriceFetcher) FetchPrices(ctx context.Context, timeframe string, days i
 				currentEnd.Format("2006-01-02 15:04:05"))
 		}
 
-		// Move window back
-		currentEnd = currentStart
-		currentStart = currentStart.Add(-chunkDuration)
-
-		// Adjust final chunk if needed
-		if currentStart.Before(startTime) {
-			currentStart = startTime
-		}
+		// Move window forward
+		currentStart = currentEnd
+		currentEnd = currentStart.Add(chunkDuration)
 
 		// Add small delay to avoid rate limits
 		time.Sleep(100 * time.Millisecond)
@@ -99,7 +100,6 @@ func calculateChunkDuration(timeframe string) time.Duration {
 		"15m": 15 * time.Minute,
 		"1h":  time.Hour,
 		"4h":  4 * time.Hour,
-		"1d":  24 * time.Hour,
 	}
 
 	interval := intervalsMap[timeframe]

@@ -3,6 +3,7 @@ package analysis
 import (
 	"CryptoTradeBot/internal/models"
 	"CryptoTradeBot/internal/services/indicators"
+	"log"
 	"math"
 )
 
@@ -52,33 +53,49 @@ func (a *TechnicalAnalyzer) analyzeTimeframe(prices []models.Price) *TechnicalDa
 	ema8Values := a.ema.Calculate(closes, 8)
 	ema21Values := a.ema.Calculate(closes, 21)
 
-	// Get EMA crossover
-	crossSignal := a.ema.CheckCrossover(ema8Values, ema21Values)
-
-	// Get RSI params from service
-	rsiParams := a.rsi.GetOptimalParameters()
-
-	// Calculate full RSI with all components
-	rsiResult := a.rsi.Calculate(closes, rsiParams.Period, rsiParams.SmoothPeriod)
-
 	// Get latest values
-	currentRSI := rsiResult.RSI[len(rsiResult.RSI)-1]
-	prevRSI := rsiResult.RSI[len(rsiResult.RSI)-2]
-	currentSignal := rsiResult.Signal[len(rsiResult.Signal)-1]
-	prevSignal := rsiResult.Signal[len(rsiResult.Signal)-2]
-	currentDivergence := rsiResult.Divergence[len(rsiResult.Divergence)-1]
+	lastIndex := len(closes) - 1
+	ema8 := ema8Values[lastIndex]
+	ema21 := ema21Values[lastIndex]
 
-	// Get RSI point analysis
-	rsiPoint := a.rsi.CalculatePoint(
-		closes[len(closes)-1], // Current price
-		closes[len(closes)-2], // Previous price
-		currentRSI,            // Current RSI
-		currentSignal,         // Current signal
-		prevRSI,               // Previous RSI
-		prevSignal,            // Previous signal
-		rsiParams.Period,
-		rsiParams.SmoothPeriod,
-	)
+	// Calculate EMA direction once
+	emaDirection := 0
+	if ema8 > ema21 {
+		emaDirection = 1
+	} else if ema8 < ema21 {
+		emaDirection = -1
+	}
+
+	// Calculate EMA slope (trend strength)
+	emaSlope := 0.0
+	if len(ema8Values) > 1 {
+		emaSlope = (ema8Values[lastIndex] - ema8Values[lastIndex-1]) / ema8Values[lastIndex-1]
+	}
+
+	// Calculate RSI
+	rsiResult := a.rsi.Calculate(closes, 14, 3)
+	currentRSI := rsiResult.RSI[len(rsiResult.RSI)-1]
+	currentSignal := rsiResult.Signal[len(rsiResult.Signal)-1]
+	currentHistogram := currentRSI - currentSignal
+
+	// Determine signal based on both EMAs and RSI
+	signal := 0
+	if emaDirection > 0 && currentRSI > 50 {
+		signal = 1
+	} else if emaDirection < 0 && currentRSI < 50 {
+		signal = -1
+	}
+
+	// Calculate RSI trend
+	rsiTrend := 0
+	if currentRSI > currentSignal {
+		rsiTrend = 1
+	} else if currentRSI < currentSignal {
+		rsiTrend = -1
+	}
+
+	log.Printf("Technical Analysis - EMA8: %.4f, EMA21: %.4f, Direction: %d, RSI: %.2f, Signal: %d",
+		ema8, ema21, emaDirection, currentRSI, signal)
 
 	td := &TechnicalData{
 		EMA: struct {
@@ -88,11 +105,12 @@ func (a *TechnicalAnalyzer) analyzeTimeframe(prices []models.Price) *TechnicalDa
 			Strength  float64
 		}{
 			Values: map[int]float64{
-				8:  ema8Values[len(ema8Values)-1],
-				21: ema21Values[len(ema21Values)-1],
+				8:  ema8,
+				21: ema21,
 			},
-			Direction: crossSignal.Direction,
-			Strength:  crossSignal.Strength,
+			Direction: emaDirection,
+			Slope:     emaSlope,
+			Strength:  math.Abs(emaSlope),
 		},
 		RSI: struct {
 			Value      float64
@@ -104,19 +122,19 @@ func (a *TechnicalAnalyzer) analyzeTimeframe(prices []models.Price) *TechnicalDa
 			CrossAbove bool
 			CrossBelow bool
 		}{
-			Value:      rsiPoint.Value,
-			Signal:     rsiPoint.Signal,
-			Histogram:  rsiPoint.Histogram,
-			Divergence: currentDivergence,
-			Trend:      rsiPoint.Trend,
-			Strength:   rsiPoint.Strength,
-			CrossAbove: rsiPoint.CrossAbove,
-			CrossBelow: rsiPoint.CrossBelow,
+			Value:      currentRSI,
+			Signal:     currentSignal,
+			Histogram:  currentHistogram,
+			Trend:      rsiTrend,
+			Strength:   math.Abs(currentRSI-50) / 50,
+			CrossAbove: len(rsiResult.RSI) > 1 && rsiResult.RSI[lastIndex-1] <= currentSignal && currentRSI > currentSignal,
+			CrossBelow: len(rsiResult.RSI) > 1 && rsiResult.RSI[lastIndex-1] >= currentSignal && currentRSI < currentSignal,
 		},
 	}
 
-	td.Signal = a.calculateSignal(td, crossSignal)
-	td.Confidence = a.calculateConfidence(td)
+	// Calculate signal and confidence
+	td.Signal = signal
+	td.Confidence = calculateConfidence(emaDirection, emaSlope, currentRSI)
 
 	return td
 }
@@ -163,32 +181,29 @@ func (a *TechnicalAnalyzer) calculateSignal(td *TechnicalData, crossSignal *indi
 		}
 	}
 
-	// Filter extreme RSI
-	if (td.RSI.Value > 70 && signal == 1) ||
-		(td.RSI.Value < 30 && signal == -1) {
-		return 0
+	// RSI confirmation
+	if td.RSI.Value > 70 {
+		signal = -1
+	} else if td.RSI.Value < 30 {
+		signal = 1
 	}
 
 	return signal
 }
 
-func (a *TechnicalAnalyzer) calculateConfidence(td *TechnicalData) float64 {
-	// Base confidence from indicators
-	emaConf := td.EMA.Strength * 0.4
-	rsiConf := td.RSI.Strength * 0.4
+func calculateConfidence(emaDirection int, emaSlope float64, rsi float64) float64 {
+	confidence := 0.0
 
-	// Trend alignment bonus
-	alignmentConf := 0.0
-	if td.EMA.Direction == td.RSI.Trend {
-		alignmentConf = 0.2
+	// EMA contribution
+	if emaDirection != 0 {
+		confidence += 0.4 * math.Abs(emaSlope) * 100
 	}
 
-	// Calculate total
-	confidence := emaConf + rsiConf + alignmentConf
-
-	// Reduce confidence in RSI middle zone
-	if td.RSI.Value > 45 && td.RSI.Value < 55 {
-		confidence *= 0.8
+	// RSI contribution
+	if rsi > 70 || rsi < 30 {
+		confidence += 0.3
+	} else if rsi > 60 || rsi < 40 {
+		confidence += 0.2
 	}
 
 	return math.Min(confidence, 1.0)

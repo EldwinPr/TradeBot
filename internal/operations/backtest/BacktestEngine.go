@@ -7,6 +7,7 @@ import (
 	"CryptoTradeBot/internal/repositories"
 	"CryptoTradeBot/internal/services/strategy"
 	"fmt"
+	"log"
 	"math"
 	"sort"
 	"sync"
@@ -16,6 +17,7 @@ import (
 type Engine struct {
 	// Core components
 	priceRepo       *repositories.PriceRepository
+	positionRepo    *repositories.PositionRepository // Add this
 	strategyManager *strategy.StrategyManager
 
 	// Backtest state
@@ -32,9 +34,12 @@ type Engine struct {
 	mu sync.RWMutex
 }
 
-func NewEngine(priceRepo *repositories.PriceRepository, strategyManager *strategy.StrategyManager, config Config) *Engine {
+const FixedSize = 1
+
+func NewEngine(priceRepo *repositories.PriceRepository, positionRepo *repositories.PositionRepository, strategyManager *strategy.StrategyManager, config Config) *Engine {
 	return &Engine{
 		priceRepo:       priceRepo,
+		positionRepo:    positionRepo,
 		strategyManager: strategyManager,
 		config:          config,
 		currentBalance:  config.InitialBalance,
@@ -64,55 +69,109 @@ func (e *Engine) RunBacktest(startTime, endTime time.Time, symbols []string) (*B
 }
 
 func (e *Engine) runSymbol(symbol string, startTime, endTime time.Time) error {
-	// Get historical prices
-	prices, err := e.priceRepo.GetPricesByTimeFrame(symbol, models.PriceTimeFrame5m, startTime, endTime)
+	log.Printf("Processing %s from %s to %s", symbol,
+		startTime.Format("2006-01-02 15:04:05"),
+		endTime.Format("2006-01-02 15:04:05"))
+
+	// process 5m data
+	extendedStart := startTime.Add(-2 * time.Hour)
+	prices5m, err := e.priceRepo.GetPricesByTimeFrame(symbol, models.PriceTimeFrame5m, extendedStart, endTime)
 	if err != nil {
 		return err
 	}
-
-	if len(prices) < 200 { // Minimum data requirement
-		return fmt.Errorf("insufficient data for %s", symbol)
-	}
+	log.Printf("Loaded %d 5m candles", len(prices5m))
 
 	// Sort prices by time
-	sort.Slice(prices, func(i, j int) bool {
-		return prices[i].OpenTime.Before(prices[j].OpenTime)
+	sort.Slice(prices5m, func(i, j int) bool {
+		return prices5m[i].OpenTime.Before(prices5m[j].OpenTime)
 	})
 
-	var activePosition *Trade
+	// process 15m data
+	extendedStart = startTime.Add(-4 * time.Hour)
+	prices15m, err := e.priceRepo.GetPricesByTimeFrame(symbol, models.PriceTimeFrame15m, extendedStart, endTime)
+	if err != nil {
+		return err
+	}
+	log.Printf("Loaded %d 15m candles", len(prices15m))
 
-	// Process each candle
-	for i := 200; i < len(prices); i++ {
-		currentPrice := prices[i]
+	// Fix: Sort prices15m (was using prices5m in index)
+	sort.Slice(prices15m, func(i, j int) bool {
+		return prices15m[i].OpenTime.Before(prices15m[j].OpenTime)
+	})
 
-		// Skip if outside our date range
+	// process 1h data
+	extendedStart = startTime.Add(-24 * time.Hour)
+	prices1h, err := e.priceRepo.GetPricesByTimeFrame(symbol, models.PriceTimeFrame1h, extendedStart, endTime)
+	if err != nil {
+		return err
+	}
+	log.Printf("Loaded %d 1h candles", len(prices1h))
+
+	sort.Slice(prices1h, func(i, j int) bool {
+		return prices1h[i].OpenTime.Before(prices1h[j].OpenTime)
+	})
+
+	// process 4h data
+	extendedStart = startTime.Add(-96 * time.Hour)
+	prices4h, err := e.priceRepo.GetPricesByTimeFrame(symbol, models.PriceTimeFrame4h, extendedStart, endTime)
+	if err != nil {
+		return err
+	}
+	log.Printf("Loaded %d 4h candles", len(prices4h))
+
+	sort.Slice(prices4h, func(i, j int) bool {
+		return prices4h[i].OpenTime.Before(prices4h[j].OpenTime)
+	})
+
+	log.Printf("Starting candle processing for %s", symbol)
+
+	validSetups := 0
+	for i := 200; i < len(prices5m); i++ {
+		currentPrice := prices5m[i]
+
 		if currentPrice.OpenTime.Before(startTime) || currentPrice.OpenTime.After(endTime) {
 			continue
 		}
 
-		if activePosition != nil {
-			if e.shouldExitPosition(activePosition, currentPrice) {
-				exitReason := e.getExitReason(activePosition, currentPrice)
-				e.closePosition(activePosition, currentPrice, exitReason)
-				activePosition = nil
-			}
+		positions, err := e.positionRepo.FindOpenPositionsBySymbol(currentPrice.Symbol)
+		if err != nil {
+			return fmt.Errorf("error checking positions: %w", err)
+		}
+		if len(positions) > 0 {
+			log.Printf("Skip analysis - existing position for %s", currentPrice.Symbol)
 			continue
 		}
 
-		// Analysis window (last 200 candles)
-		analysisWindow := prices[i-200 : i+1]
-		result, err := e.strategyManager.Analyze(nil, analysisWindow, nil, nil, nil) // Adjust parameters as needed
-
+		result, err := e.strategyManager.Analyze(nil, prices5m[i-200:i+1], prices15m, prices1h, prices4h)
 		if err != nil {
 			return fmt.Errorf("error analyzing strategy: %w", err)
 		}
 
 		if result.IsValid {
-			activePosition = e.openPosition(result, currentPrice)
+			validSetups++
+			log.Printf("Valid setup found for %s. Direction: %s, Price: %.4f",
+				currentPrice.Symbol, result.Direction, currentPrice.Close)
+
+			newModelPosition := &models.Position{
+				Symbol:          currentPrice.Symbol,
+				Side:            result.Direction,
+				Size:            FixedSize,
+				Leverage:        Leverage,
+				EntryPrice:      currentPrice.Close,
+				StopLossPrice:   result.StopLoss,
+				TakeProfitPrice: result.TakeProfit,
+				OpenTime:        currentPrice.OpenTime,
+				Status:          models.PositionStatusOpen,
+			}
+
+			if err := e.positionRepo.Create(newModelPosition); err != nil {
+				return fmt.Errorf("error creating position: %w", err)
+			}
+			log.Printf("Position opened for %s", currentPrice.Symbol)
 			e.updateEquityCurve(currentPrice.OpenTime)
 		}
 	}
-
+	log.Printf("Found %d valid setups", validSetups)
 	return nil
 }
 
@@ -143,14 +202,12 @@ func (e *Engine) getExitReason(trade *Trade, price models.Price) string {
 }
 
 func (e *Engine) openPosition(result *strategy.StrategyResult, price models.Price) *Trade {
-	size := e.config.InitialBalance * e.config.RiskPerTrade * float64(e.config.Leverage) / price.Close
-
 	return &Trade{
 		Symbol:     price.Symbol,
 		EntryTime:  price.OpenTime,
 		Side:       result.Direction,
 		EntryPrice: price.Close,
-		Size:       size,
+		Size:       FixedSize, // Use fixed size directly
 		StopLoss:   result.StopLoss,
 		TakeProfit: result.TakeProfit,
 	}
@@ -161,19 +218,31 @@ func (e *Engine) closePosition(trade *Trade, price models.Price, reason string) 
 	trade.ExitPrice = price.Close
 	trade.Reason = reason
 
-	// Calculate PnL
 	pnlPercent := 0.0
 	if trade.Side == "long" {
-		pnlPercent = (trade.ExitPrice - trade.EntryPrice) / trade.EntryPrice
+		pnlPercent = (price.Close - trade.EntryPrice) / trade.EntryPrice
 	} else {
-		pnlPercent = (trade.EntryPrice - trade.ExitPrice) / trade.EntryPrice
+		pnlPercent = (trade.EntryPrice - price.Close) / trade.EntryPrice
 	}
 
-	trade.PnL = trade.Size * pnlPercent * float64(e.config.Leverage)
+	trade.PnL = FixedSize * pnlPercent * float64(e.config.Leverage)
 
-	e.updateBalance(trade.PnL)
+	// Update position in database
+	position, err := e.positionRepo.FindOpenPositionsBySymbol(trade.Symbol)
+	if err == nil && len(position) > 0 {
+		position[0].Status = models.PositionStatusClosed
+		position[0].CloseTime = price.OpenTime
+		position[0].PnL = trade.PnL
+		e.positionRepo.Update(&position[0])
+	}
+
 	e.mu.Lock()
+	e.currentBalance += trade.PnL
+	if e.currentBalance > e.maxBalance {
+		e.maxBalance = e.currentBalance
+	}
 	e.trades = append(e.trades, *trade)
+	e.updateEquityCurve(price.OpenTime)
 	e.mu.Unlock()
 }
 
@@ -300,4 +369,12 @@ func (e *Engine) calculateSharpeRatio() float64 {
 	annualizedStdDev := stdDev * math.Sqrt(252)
 
 	return annualizedReturn / annualizedStdDev
+}
+
+// Calculate PnL for a trade
+func (e *Engine) calculatePnL(trade *Trade, currentPrice models.Price) float64 {
+	if trade.Side == "long" {
+		return (currentPrice.Close - trade.EntryPrice) * trade.Size * float64(e.config.Leverage)
+	}
+	return (trade.EntryPrice - currentPrice.Close) * trade.Size * float64(e.config.Leverage)
 }

@@ -31,7 +31,7 @@ func (a *VolumeAnalyzer) Analyze(prices5m, prices15m, prices1h []models.Price) (
 		return nil, err
 	}
 
-	m1h, err := a.analyzeTimeframe(prices1h, 6)
+	m1h, err := a.analyzeTimeframe(prices1h, 12)
 	if err != nil {
 		return nil, err
 	}
@@ -49,8 +49,8 @@ func (a *VolumeAnalyzer) Analyze(prices5m, prices15m, prices1h []models.Price) (
 }
 
 func (a *VolumeAnalyzer) analyzeTimeframe(prices []models.Price, window int) (*timeframeVolumeMetrics, error) {
-	if len(prices) < window {
-		return nil, fmt.Errorf("insufficient data, need %d bars", window)
+	if len(prices) <= window {
+		return nil, fmt.Errorf("insufficient data, need %d bars, have %d bars", window, len(prices))
 	}
 
 	recent := prices[len(prices)-window:]

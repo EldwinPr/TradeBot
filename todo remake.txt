@@ -184,3 +184,5 @@ Key Points:
 6. Testable components
 
 Would you like me to detail any specific component's implementation?
+
+, AAVEUSDT, POLUSDT, NEARUSDT, FETUSDT, JUPUSDT
