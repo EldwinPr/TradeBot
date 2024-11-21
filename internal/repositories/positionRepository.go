@@ -125,3 +125,33 @@ func (r *PositionRepository) CountOpenPositions(symbol string) (int64, error) {
 		Count(&count).Error
 	return count, err
 }
+
+func (r *PositionRepository) ReversePosition(currentPos *models.Position, newPos *models.Position, balance *models.Balance) error {
+	return r.db.Transaction(func(tx *gorm.DB) error {
+		// Close old position
+		if err := tx.Save(currentPos).Error; err != nil {
+			return err
+		}
+
+		// Update balance
+		if err := tx.Save(balance).Error; err != nil {
+			return err
+		}
+
+		// Create new position
+		if err := tx.Create(newPos).Error; err != nil {
+			return err
+		}
+
+		return nil
+	})
+}
+
+func (r *PositionRepository) ClosePosition(position *models.Position, balance *models.Balance) error {
+	return r.db.Transaction(func(tx *gorm.DB) error {
+		if err := tx.Save(position).Error; err != nil {
+			return err
+		}
+		return tx.Save(balance).Error
+	})
+}

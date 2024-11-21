@@ -6,8 +6,6 @@ import (
 	"context"
 	"fmt"
 	"time"
-
-	"gorm.io/gorm"
 )
 
 type PositionExecutor struct {
@@ -43,33 +41,6 @@ func (e *PositionExecutor) OpenPosition(ctx context.Context, req *models.Positio
 	return e.positionRepo.Create(req)
 }
 
-func (e *PositionExecutor) ClosePosition(ctx context.Context, position *models.Position, closePrice float64) error {
-	// Calculate PnL
-	pnl := e.calculatePnL(position, closePrice)
-
-	// Update position
-	position.CloseTime = time.Now()
-	position.Status = models.PositionStatusClosed
-	position.PnL = pnl
-
-	// Get balance for update
-	balance, err := e.balanceRepo.FindBySymbol("USDT")
-	if err != nil {
-		return fmt.Errorf("failed to get balance: %w", err)
-	}
-
-	balance.Balance += pnl
-	balance.LastUpdated = time.Now()
-
-	// Execute in transaction
-	return e.positionRepo.DB().Transaction(func(tx *gorm.DB) error {
-		if err := tx.Save(position).Error; err != nil {
-			return err
-		}
-		return tx.Save(balance).Error
-	})
-}
-
 func (e *PositionExecutor) ReversePosition(ctx context.Context, currentPos *models.Position, newPos *models.Position) error {
 	// Calculate PnL for existing position
 	pnl := e.calculatePnL(currentPos, newPos.EntryPrice)
@@ -95,16 +66,30 @@ func (e *PositionExecutor) ReversePosition(ctx context.Context, currentPos *mode
 	newPos.OpenTime = time.Now()
 	newPos.Status = models.PositionStatusOpen
 
-	// Execute all in transaction
-	return e.positionRepo.DB().Transaction(func(tx *gorm.DB) error {
-		if err := tx.Save(currentPos).Error; err != nil {
-			return err
-		}
-		if err := tx.Save(balance).Error; err != nil {
-			return err
-		}
-		return tx.Create(newPos).Error
-	})
+	// Use repository transaction
+	return e.positionRepo.ReversePosition(currentPos, newPos, balance)
+}
+
+func (e *PositionExecutor) ClosePosition(ctx context.Context, position *models.Position, closePrice float64) error {
+	// Calculate PnL
+	pnl := e.calculatePnL(position, closePrice)
+
+	// Update position
+	position.CloseTime = time.Now()
+	position.Status = models.PositionStatusClosed
+	position.PnL = pnl
+
+	// Get balance for update
+	balance, err := e.balanceRepo.FindBySymbol("USDT")
+	if err != nil {
+		return fmt.Errorf("failed to get balance: %w", err)
+	}
+
+	balance.Balance += pnl
+	balance.LastUpdated = time.Now()
+
+	// Use repository for transaction
+	return e.positionRepo.ClosePosition(position, balance)
 }
 
 func (e *PositionExecutor) calculatePnL(position *models.Position, closePrice float64) float64 {
