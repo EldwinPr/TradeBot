@@ -104,3 +104,24 @@ func (r *PositionRepository) GetTotalPnL(start, end time.Time) (float64, error) 
 		Scan(&totalPnL).Error
 	return totalPnL, err
 }
+
+// Optional - helpful methods for position management:
+func (r *PositionRepository) GetLastPosition(symbol string) (*models.Position, error) {
+	var position models.Position
+	err := r.db.Where("symbol = ?", symbol).
+		Order("open_time DESC").
+		First(&position).Error
+	if err == gorm.ErrRecordNotFound {
+		return nil, nil
+	}
+	return &position, err
+}
+
+func (r *PositionRepository) CountOpenPositions(symbol string) (int64, error) {
+	var count int64
+	err := r.db.Model(&models.Position{}).
+		Where("symbol = ? AND status = ?",
+			symbol, models.PositionStatusOpen).
+		Count(&count).Error
+	return count, err
+}

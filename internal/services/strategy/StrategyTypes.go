@@ -1,6 +1,9 @@
 package strategy
 
-import "CryptoTradeBot/internal/services/analysis"
+import (
+	"CryptoTradeBot/internal/services/analysis"
+	"time"
+)
 
 // StrategyResult represents the output of a strategy analysis
 type StrategyResult struct {
@@ -19,6 +22,23 @@ type StrategyResult struct {
 	Volume     analysis.VolumeData
 	Technical  analysis.TechnicalData
 	Price      analysis.PriceData
+}
+
+type PositionRequest struct {
+	Action     string
+	Symbol     string
+	Side       string
+	EntryPrice float64
+	StopLoss   float64
+	TakeProfit float64
+	Confidence float64
+
+	// Analysis results
+	Volume    analysis.VolumeData
+	Technical analysis.TechnicalData
+	Price     analysis.PriceData
+
+	Timestamp time.Time
 }
 
 // Helper function for invalid results

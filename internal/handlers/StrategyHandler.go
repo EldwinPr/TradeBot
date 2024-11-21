@@ -5,6 +5,7 @@ import (
 	"CryptoTradeBot/internal/repositories"
 	"CryptoTradeBot/internal/services/strategy"
 	"context"
+	"fmt"
 	"sync"
 	"time"
 )
@@ -29,6 +30,7 @@ type symbolProcessor struct {
 	strategyManager *strategy.StrategyManager
 	priceRepo       *repositories.PriceRepository
 	positionRepo    *repositories.PositionRepository
+	positionHandler PositionHandler // Add this
 }
 
 func NewStrategyHandler(
@@ -153,13 +155,46 @@ func (p *symbolProcessor) process(ctx context.Context) error {
 	return nil
 }
 
-func (p *symbolProcessor) processValidSignal(ctx context.Context, result *strategy.StrategyResult) {
-	// Here you would:
-	// 1. Send signal to position handler
-	// 2. Log the signal
-	// 3. Update any monitoring metrics
+func (p *symbolProcessor) processValidSignal(ctx context.Context, result *strategy.StrategyResult) error {
+	// Get current positions first
+	currentPositions, err := p.positionRepo.FindOpenPositionsBySymbol(p.symbol)
+	if err != nil {
+		return fmt.Errorf("error checking current positions: %w", err)
+	}
 
-	// This would typically emit an event or call your position handler
+	// Determine action based on current position and result
+	var action string
+	if len(currentPositions) == 0 {
+		// No position - this is a new entry
+		action = "open"
+	} else {
+		currentPos := currentPositions[0]
+		if currentPos.Side != result.Direction {
+			// Different direction - this is a reversal
+			action = "reverse"
+		} else {
+			// Same direction - ignore
+			return nil
+		}
+	}
+
+	// Create position request
+	positionRequest := &strategy.PositionRequest{
+		Action:     action,
+		Symbol:     p.symbol,
+		Side:       result.Direction,
+		EntryPrice: result.EntryPrice,
+		StopLoss:   result.StopLoss,
+		TakeProfit: result.TakeProfit,
+		Confidence: result.Confidence,
+		Volume:     result.Volume,
+		Technical:  result.Technical,
+		Price:      result.Price,
+		Timestamp:  time.Now(),
+	}
+
+	// Send to position handler
+	return p.positionHandler.HandlePositionRequest(ctx, positionRequest)
 }
 
 // Helper methods for handler management
