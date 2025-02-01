@@ -1,22 +1,16 @@
 package main
 
 import (
-	"context"
 	"fmt"
 	"log"
-	"os"
-	"os/signal"
-	"syscall"
 	"time"
 
 	"CryptoTradeBot/config"
-	"CryptoTradeBot/internal/handlers"
 	"CryptoTradeBot/internal/models"
 	"CryptoTradeBot/internal/operations/backtest"
 	"CryptoTradeBot/internal/repositories"
 	"CryptoTradeBot/internal/services/strategy"
 
-	"github.com/adshao/go-binance/v2/futures"
 	"gorm.io/driver/postgres"
 	"gorm.io/gorm"
 	"gorm.io/gorm/logger"
@@ -32,41 +26,39 @@ func main() {
 	// Setup database
 	db := setupDatabase(cfg.Database)
 
-	// Drop existing prices table if exists
-	err = db.Exec("DROP TABLE IF EXISTS prices").Error
-	if err != nil {
-		log.Fatal("Failed to drop prices table:", err)
-	}
-
-	// Create fresh prices table
-	err = db.AutoMigrate(&models.Price{})
-	if err != nil {
-		log.Fatal("Failed to create prices table:", err)
-	}
-
-	// Initialize repository
+	// Initialize strategy components
+	strategyManager := strategy.NewStrategyManager()
 	priceRepo := repositories.NewPriceRepository(db)
 	positionRepo := repositories.NewPositionRepository(db)
 
-	// Initialize Binance client
-	futuresClient := futures.NewClient(cfg.Exchange.APIKey, cfg.Exchange.SecretKey)
+	// // Drop existing prices table if exists
+	// err = db.Exec("DROP TABLE IF EXISTS prices").Error
+	// if err != nil {
+	// 	log.Fatal("Failed to drop prices table:", err)
+	// }
 
-	// Initialize price handler
-	priceHandler := handlers.NewPriceHandler(futuresClient, priceRepo, cfg.Symbols)
+	// // Create fresh prices table
+	// err = db.AutoMigrate(&models.Price{})
+	// if err != nil {
+	// 	log.Fatal("Failed to create prices table:", err)
+	// }
 
-	// Setup context for graceful shutdown
-	ctx, cancel := context.WithCancel(context.Background())
-	defer cancel()
+	// // Initialize Binance client
+	// futuresClient := futures.NewClient(cfg.Exchange.APIKey, cfg.Exchange.SecretKey)
 
-	// Start price handling
-	if err := priceHandler.Start(ctx); err != nil {
-		log.Fatal("Failed to start price handler:", err)
-	}
+	// // Initialize price handler
+	// priceHandler := handlers.NewPriceHandler(futuresClient, priceRepo, cfg.Symbols)
 
-	log.Println("Price recording started...")
+	// // Setup context for graceful shutdown
+	// ctx, cancel := context.WithCancel(context.Background())
+	// defer cancel()
 
-	// Initialize strategy components
-	strategyManager := strategy.NewStrategyManager()
+	// // Start price handling
+	// if err := priceHandler.Start(ctx); err != nil {
+	// 	log.Fatal("Failed to start price handler:", err)
+	// }
+
+	// log.Println("Price recording started...")
 
 	// Setup backtest config
 	backtestConfig := backtest.Config{
@@ -99,16 +91,16 @@ func main() {
 	fmt.Printf("Final Balance: $%.2f\n", results.FinalBalance)
 	fmt.Printf("Sharpe Ratio: %.2f\n", results.SharpeRatio)
 
-	// Handle shutdown
-	c := make(chan os.Signal, 1)
-	signal.Notify(c, os.Interrupt, syscall.SIGTERM)
+	// // Handle shutdown
+	// c := make(chan os.Signal, 1)
+	// signal.Notify(c, os.Interrupt, syscall.SIGTERM)
 
-	<-c
+	// <-c
 
-	log.Println("Shutting down...")
-	cancel()
-	time.Sleep(time.Second * 2) // Give time for cleanup
-	log.Println("Shutdown complete")
+	// log.Println("Shutting down...")
+	// cancel()
+	// time.Sleep(time.Second * 2) // Give time for cleanup
+	// log.Println("Shutdown complete")
 }
 
 func setupDatabase(dbConfig config.DatabaseConfig) *gorm.DB {
