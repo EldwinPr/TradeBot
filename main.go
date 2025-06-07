@@ -43,8 +43,7 @@ func main() {
 	analysis := analysis.NewAnalysis()
 
 	symbols := []string{
-		"ONDOUSDT", "LINKUSDT", "DOTUSDT", "BNBUSDT", "SOLUSDT",
-		"BTCUSDT", "ETHUSDT", "XRPUSDT", "SUIUSDT", "ADAUSDT",
+		"BTCUSDT", "ETHUSDT", "XRPUSDT",
 	}
 
 	switch *mode {
